@@ -1,6 +1,6 @@
 """
-Database connection module for Supabase.
-Handles all database operations for the EV Charging Station Locator.
+Database module for EV Charging Station Locator
+Handles Supabase (PostgreSQL) connection and queries for stations and bookings
 """
 
 import os
@@ -48,11 +48,6 @@ def get_all_stations() -> list:
     
     Returns:
         list: List of dictionaries containing station data.
-              Each dictionary has: id, name, latitude, longitude, 
-              charger_type, price, status
-    
-    Raises:
-        Exception: If database query fails
     """
     try:
         client = get_supabase_client()
@@ -60,6 +55,25 @@ def get_all_stations() -> list:
         return response.data
     except Exception as e:
         print(f"Error fetching stations: {e}")
+        raise
+
+
+def get_stations_by_connector(connector_type: str) -> list:
+    """
+    Fetch stations filtered by connector type.
+    
+    Args:
+        connector_type: Type of connector (Tesla, CCS, Type2)
+    
+    Returns:
+        list: List of stations matching the connector type
+    """
+    try:
+        client = get_supabase_client()
+        response = client.table("stations").select("*").eq("connector_type", connector_type).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching stations by connector: {e}")
         raise
 
 
@@ -76,46 +90,114 @@ def get_station_by_id(station_id: int) -> dict:
     try:
         client = get_supabase_client()
         response = client.table("stations").select("*").eq("id", station_id).execute()
-        return response.data[0] if response.data else None
+        
+        # Safely handle empty results
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return None
     except Exception as e:
         print(f"Error fetching station {station_id}: {e}")
         raise
 
 
-def get_available_stations() -> list:
+def get_booking_count(station_id: int) -> int:
     """
-    Fetch only available EV charging stations.
-    
-    Returns:
-        list: List of available stations
-    """
-    try:
-        client = get_supabase_client()
-        response = client.table("stations").select("*").eq("status", "Available").execute()
-        return response.data
-    except Exception as e:
-        print(f"Error fetching available stations: {e}")
-        raise
-
-
-def add_station(station_data: dict) -> dict:
-    """
-    Add a new EV charging station to the database.
+    Get the current number of bookings for a station.
     
     Args:
-        station_data: Dictionary containing station information
-                     (name, latitude, longitude, charger_type, price, status)
+        station_id: The ID of the station
     
     Returns:
-        dict: The newly created station data
-    
-    Raises:
-        Exception: If database insert fails
+        int: Number of current bookings
     """
     try:
         client = get_supabase_client()
-        response = client.table("stations").insert(station_data).execute()
-        return response.data[0] if response.data else None
+        response = client.table("bookings").select("id", count="exact").eq("station_id", station_id).execute()
+        return response.count if response.count is not None else 0
     except Exception as e:
-        print(f"Error adding station: {e}")
-        raise
+        print(f"Error counting bookings: {e}")
+        return 0
+
+
+def get_available_slots(station_id: int) -> int:
+    """
+    Get the number of available slots for a station.
+    
+    Args:
+        station_id: The ID of the station
+    
+    Returns:
+        int: Number of available slots
+    """
+    try:
+        station = get_station_by_id(station_id)
+        if not station:
+            return 0
+        
+        total_slots = station.get("total_slots", 0)
+        current_bookings = get_booking_count(station_id)
+        
+        return max(0, total_slots - current_bookings)
+    except Exception as e:
+        print(f"Error calculating available slots: {e}")
+        return 0
+
+
+def create_booking(station_id: int, user_name: str) -> tuple:
+    """
+    Create a new booking for a station.
+    
+    Args:
+        station_id: The ID of the station to book
+        user_name: Name of the user making the booking
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    try:
+        # Get station details
+        station = get_station_by_id(station_id)
+        if not station:
+            return False, "Station not found"
+        
+        # Check available slots
+        current_bookings = get_booking_count(station_id)
+        total_slots = station.get("total_slots", 0)
+        
+        if current_bookings >= total_slots:
+            return False, "Full"
+        
+        # Create the booking
+        client = get_supabase_client()
+        response = client.table("bookings").insert({
+            "station_id": station_id,
+            "user_name": user_name
+        }).execute()
+        
+        if response.data:
+            return True, "Success"
+        else:
+            return False, "Booking failed"
+            
+    except Exception as e:
+        print(f"Error creating booking: {e}")
+        return False, str(e)
+
+
+def get_bookings_for_station(station_id: int) -> list:
+    """
+    Get all bookings for a specific station.
+    
+    Args:
+        station_id: The ID of the station
+    
+    Returns:
+        list: List of booking records
+    """
+    try:
+        client = get_supabase_client()
+        response = client.table("bookings").select("*").eq("station_id", station_id).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching bookings: {e}")
+        return []

@@ -3,12 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EV Charging Station Finder</title>
+    <title>EV Charging Station Locator</title>
     
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-          crossorigin="">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    
+    <!-- Leaflet Routing Machine CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -17,471 +21,648 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 </head>
 <body>
-    <!-- Header -->
-    <header class="header">
-        <h1>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
-            EV Charging Station Finder
-        </h1>
-        <span class="header-subtitle">Find charging stations near you</span>
-    </header>
-
-    <!-- Main Container -->
-    <div class="main-container">
-        <!-- Map Container -->
-        <div class="map-container">
-            <div id="map"></div>
-        </div>
-
+    <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h2>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                        <circle cx="12" cy="10" r="3"></circle>
-                    </svg>
-                    Nearby Stations
-                    <span id="stationCount" class="station-count">0</span>
-                </h2>
-            </div>
-            <div id="stationList" class="station-list">
-                <!-- Loading state -->
-                <div class="loading-container" id="loadingState">
-                    <div class="loading-spinner"></div>
-                    <p>Loading stations...</p>
+                <div class="logo">
+                    <span class="logo-icon">⚡</span>
+                    <h1>EV Station Locator</h1>
                 </div>
             </div>
-        </aside>
-    </div>
-
-    <!-- Add Station Button -->
-    <button class="add-station-btn" onclick="openModal()" title="Add New Station">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-    </button>
-
-    <!-- Add Station Modal -->
-    <div id="addStationModal" class="modal-overlay" onclick="closeModalOnOutsideClick(event)">
-        <div class="modal" onclick="event.stopPropagation()">
-            <div class="modal-header">
-                <h2>Add New Charging Station</h2>
-                <button class="close-modal" onclick="closeModal()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
+            
+            <div class="sidebar-content">
+                <!-- Connector Type Selection -->
+                <div class="form-group">
+                    <label for="connector-type">
+                        <span class="label-icon">🔌</span>
+                        Car / Connector Type
+                    </label>
+                    <select id="connector-type" class="form-control">
+                        <option value="all">All Connectors</option>
+                        <option value="Tesla">Tesla</option>
+                        <option value="CCS">CCS (Combined Charging System)</option>
+                        <option value="Type2">Type 2 (Mennekes)</option>
+                    </select>
+                </div>
+                
+                <!-- Battery Percentage Slider -->
+                <div class="form-group">
+                    <label for="battery-percent">
+                        <span class="label-icon">🔋</span>
+                        Current Battery: <span id="battery-value">50</span>%
+                    </label>
+                    <input type="range" id="battery-percent" class="form-range" 
+                           min="0" max="100" value="50">
+                    <div class="range-labels">
+                        <span>0%</span>
+                        <span>50%</span>
+                        <span>100%</span>
+                    </div>
+                </div>
+                
+                <!-- Range Display -->
+                <div class="range-info">
+                    <div class="range-display">
+                        <span class="range-label">Estimated Range:</span>
+                        <span id="range-value" class="range-number">150 km</span>
+                    </div>
+                </div>
+                
+                <!-- Find Stations Button -->
+                <button id="find-stations-btn" class="btn btn-primary">
+                    <span class="btn-icon">📍</span>
+                    Find Stations
                 </button>
+                
+                <!-- Status Messages -->
+                <div id="status-message" class="status-message"></div>
+                
+                <!-- Station List -->
+                <div class="station-list-container">
+                    <h3 class="section-title">Nearby Stations</h3>
+                    <div id="station-list" class="station-list">
+                        <p class="placeholder-text">Click "Find Stations" to search for charging stations near you.</p>
+                    </div>
+                </div>
+                
+                <!-- Turn-by-Turn Directions -->
+                <div id="directions-container" class="directions-container hidden">
+                    <div class="directions-header">
+                        <h3 class="section-title">🧭 Route Directions</h3>
+                        <button id="close-directions" class="close-directions-btn">✕</button>
+                    </div>
+                    <div id="route-summary" class="route-summary"></div>
+                    <div id="directions-list" class="directions-list"></div>
+                </div>
             </div>
-            <div class="modal-body">
-                <div id="formAlert"></div>
-                <form id="addStationForm" onsubmit="handleSubmit(event)">
-                    <div class="form-group">
-                        <label for="stationName">Station Name *</label>
-                        <input type="text" id="stationName" name="name" required placeholder="e.g., Tata Power EV Station">
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="latitude">Latitude *</label>
-                            <input type="number" id="latitude" name="latitude" step="any" required placeholder="18.5204">
-                        </div>
-                        <div class="form-group">
-                            <label for="longitude">Longitude *</label>
-                            <input type="number" id="longitude" name="longitude" step="any" required placeholder="73.8567">
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="chargerType">Charger Type *</label>
-                        <input type="text" id="chargerType" name="charger_type" required placeholder="e.g., DC Fast (50kW)">
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="price">Price *</label>
-                            <input type="text" id="price" name="price" required placeholder="e.g., ₹15/kWh">
-                        </div>
-                        <div class="form-group">
-                            <label for="status">Status *</label>
-                            <select id="status" name="status" required>
-                                <option value="Available">Available</option>
-                                <option value="Busy">Busy</option>
-                                <option value="Maintenance">Maintenance</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="submitBtn">Add Station</button>
-                    </div>
-                </form>
+            
+            <div class="sidebar-footer">
+                <p>Max Range: 300 km @ 100% battery</p>
             </div>
-        </div>
+        </aside>
+        
+        <!-- Map Container -->
+        <main class="map-container">
+            <div id="map"></div>
+            
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="loading-overlay hidden">
+                <div class="spinner"></div>
+                <p>Finding stations...</p>
+            </div>
+        </main>
     </div>
+    
+    <!-- Leaflet JS - Load first -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <!-- Leaflet Routing Machine JS - Load second -->
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
-            crossorigin=""></script>
-
+    <!-- Custom JavaScript - Load last -->
     <script>
         // Configuration
-        const CONFIG = {
-            center: [18.5204, 73.8567], // Pune, India
-            zoom: 12,
-            apiEndpoint: '/api/stations'
-        };
-
+        const MAX_RANGE_KM = 300;
+        const DEFAULT_CENTER = [18.5204, 73.8567]; // Pune, India
+        const DEFAULT_ZOOM = 12;
+        
         // Global variables
         let map;
-        let markers = [];
+        let userMarker = null;
+        let rangeCircle = null;
+        let stationMarkers = [];
+        let userLocation = null;
+        let routingControl = null;
+        let currentRoute = null;
         let stationsData = [];
-
-        // Initialize the map
+        
+        // Custom icon creator
+        function createIcon(color, emoji) {
+            return L.divIcon({
+                className: 'custom-marker',
+                html: `<div class="marker-pin" style="background-color: ${color};">
+                    <span style="transform: rotate(45deg); font-size: 16px;">${emoji}</span>
+                </div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 40],
+                popupAnchor: [0, -35]
+            });
+        }
+        
+        // Define icons
+        const userIcon = createIcon('#3b82f6', '📍');
+        const stationIconReachable = createIcon('#22c55e', '⚡');
+        const stationIconUnreachable = createIcon('#ef4444', '⚡');
+        const stationIconFull = createIcon('#f59e0b', '⚡');
+        
+        // Initialize map
         function initMap() {
-            map = L.map('map').setView(CONFIG.center, CONFIG.zoom);
+            map = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
             
-            // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
-
-            // Load stations
-            fetchStations();
         }
-
-        // Custom marker icon
-        function createMarkerIcon(status) {
-            const colors = {
-                'Available': '#10b981',
-                'Busy': '#f59e0b',
-                'Maintenance': '#ef4444'
-            };
-            
-            const color = colors[status] || colors['Available'];
-            
-            return L.divIcon({
-                className: 'custom-div-icon',
-                html: `
-                    <div style="
-                        background-color: ${color};
-                        width: 30px;
-                        height: 30px;
-                        border-radius: 50%;
-                        border: 3px solid white;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                    ">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                        </svg>
-                    </div>
-                `,
-                iconSize: [30, 30],
-                iconAnchor: [15, 15],
-                popupAnchor: [0, -15]
-            });
-        }
-
-        // Fetch stations from API
-        async function fetchStations() {
-            const loadingState = document.getElementById('loadingState');
-            const stationList = document.getElementById('stationList');
-            
-            try {
-                const response = await fetch(CONFIG.apiEndpoint);
-                const result = await response.json();
-                
-                if (result.success) {
-                    stationsData = result.data;
-                    updateStationCount(stationsData.length);
-                    renderStations(stationsData);
-                    addMarkersToMap(stationsData);
-                } else {
-                    showError(result.error || 'Failed to load stations');
+        
+        // Get user's geolocation
+        function getUserLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation is not supported by your browser'));
+                    return;
                 }
-            } catch (error) {
-                console.error('Error fetching stations:', error);
-                showError('Unable to connect to server. Please try again later.');
-            }
-        }
-
-        // Update station count badge
-        function updateStationCount(count) {
-            document.getElementById('stationCount').textContent = count;
-        }
-
-        // Get status badge HTML
-        function getStatusBadge(status) {
-            const statusClasses = {
-                'Available': 'status-available',
-                'Busy': 'status-busy',
-                'Maintenance': 'status-maintenance'
-            };
-            
-            const statusClass = statusClasses[status] || 'status-available';
-            return `<span class="status-badge ${statusClass}">${status}</span>`;
-        }
-
-        // Render stations in sidebar
-        function renderStations(stations) {
-            const stationList = document.getElementById('stationList');
-            
-            if (stations.length === 0) {
-                stationList.innerHTML = `
-                    <div class="empty-state">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                            <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                        <h3>No stations found</h3>
-                        <p>There are no charging stations in this area.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            stationList.innerHTML = stations.map(station => `
-                <div class="station-card" data-id="${station.id}" onclick="focusStation(${station.id})">
-                    <div class="station-name">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                        </svg>
-                        ${station.name}
-                    </div>
-                    <div class="station-details">
-                        <div class="station-detail">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
-                                <line x1="22" y1="11" x2="22" y2="13"></line>
-                            </svg>
-                            ${station.charger_type}
-                        </div>
-                        <div class="station-detail">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="12" y1="1" x2="12" y2="23"></line>
-                                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                            </svg>
-                            ${station.price}
-                        </div>
-                        <div class="station-detail">
-                            ${getStatusBadge(station.status)}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Add markers to map
-        function addMarkersToMap(stations) {
-            // Clear existing markers
-            markers.forEach(marker => map.removeLayer(marker));
-            markers = [];
-
-            stations.forEach(station => {
-                const marker = L.marker(
-                    [station.latitude, station.longitude],
-                    { icon: createMarkerIcon(station.status) }
+                
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const location = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        console.log('Got user location:', location);
+                        resolve(location);
+                    },
+                    (error) => {
+                        console.error('Geolocation error:', error);
+                        reject(error);
+                    },
+                    { 
+                        enableHighAccuracy: true, 
+                        timeout: 15000,
+                        maximumAge: 0 
+                    }
                 );
-
-                // Create popup content
-                const popupContent = `
-                    <div class="popup-content">
-                        <div class="popup-title">${station.name}</div>
-                        <div class="popup-info">
-                            <div class="popup-row">
-                                <span class="popup-label">Type:</span>
-                                <span class="popup-value">${station.charger_type}</span>
-                            </div>
-                            <div class="popup-row">
-                                <span class="popup-label">Price:</span>
-                                <span class="popup-value">${station.price}</span>
-                            </div>
-                            <div class="popup-row">
-                                <span class="popup-label">Status:</span>
-                                <span class="popup-value">${getStatusBadge(station.status)}</span>
-                            </div>
-                        </div>
+            });
+        }
+        
+        // Update user marker on map
+        function updateUserMarker(lat, lng) {
+            if (userMarker) {
+                userMarker.setLatLng([lat, lng]);
+            } else {
+                userMarker = L.marker([lat, lng], { icon: userIcon })
+                    .addTo(map)
+                    .bindPopup('<b>📍 Your Location</b>');
+            }
+        }
+        
+        // Update range circle on map (RED circle showing max range)
+        function updateRangeCircle(lat, lng, radiusKm) {
+            const radiusMeters = radiusKm * 1000;
+            
+            if (rangeCircle) {
+                rangeCircle.setLatLng([lat, lng]);
+                rangeCircle.setRadius(radiusMeters);
+            } else {
+                rangeCircle = L.circle([lat, lng], {
+                    color: '#ef4444',
+                    fillColor: '#ef4444',
+                    fillOpacity: 0.1,
+                    weight: 2,
+                    dashArray: '5, 10',
+                    radius: radiusMeters
+                }).addTo(map);
+            }
+        }
+        
+        // Clear station markers
+        function clearStationMarkers() {
+            stationMarkers.forEach(item => map.removeLayer(item.marker));
+            stationMarkers = [];
+            stationsData = [];
+        }
+        
+        // Create popup content for station
+        function createPopupContent(station) {
+            const availableSlots = station.available_slots;
+            const slotStatus = availableSlots > 0 
+                ? `${availableSlots} / ${station.total_slots}` 
+                : `Full (${station.total_slots} total)`;
+            
+            const distanceInfo = station.distance !== null 
+                ? `<p><strong>Distance (Straight-line):</strong> ${station.distance.toFixed(2)} km</p>` 
+                : '';
+            
+            const reachableStatus = station.is_reachable 
+                ? '<span class="status-reachable">✓ Within range</span>'
+                : '<span class="status-unreachable">✗ Out of range</span>';
+            
+            const routeButton = userLocation 
+                ? `<button class="btn-route" onclick="showRouteToStation(${station.id}, ${station.latitude}, ${station.longitude}, '${station.name.replace(/'/g, "\\'")}')">
+                        🗺️ Show Route
+                   </button>`
+                : '';
+            
+            const bookButton = availableSlots > 0 
+                ? `<button class="btn-book" onclick="openBookingModal(${station.id}, '${station.name.replace(/'/g, "\\'")}')">
+                        🎫 Book Slot
+                   </button>`
+                : `<button class="btn-book btn-disabled" disabled>
+                        Station Full
+                   </button>`;
+            
+            return `
+                <div class="station-popup">
+                    <h3>⚡ ${station.name}</h3>
+                    <div class="popup-info">
+                        <p><strong>Connector:</strong> ${station.connector_type}</p>
+                        <p><strong>Price:</strong> ₹${station.price_per_unit}/kWh</p>
+                        ${distanceInfo}
+                        <p><strong>Status:</strong> ${reachableStatus}</p>
+                        <p><strong>Slots:</strong> ${slotStatus}</p>
                     </div>
-                `;
-
-                marker.bindPopup(popupContent);
-                
-                // Highlight sidebar card on marker click
-                marker.on('click', () => highlightStationCard(station.id));
-                
-                marker.addTo(map);
-                markers.push({ id: station.id, marker });
-            });
-
-            // Fit map to show all markers if there are any
-            if (stations.length > 0) {
-                const group = new L.featureGroup(markers.map(m => m.marker));
-                map.fitBounds(group.getBounds().pad(0.1));
-            }
-        }
-
-        // Focus on a specific station
-        function focusStation(stationId) {
-            const station = stationsData.find(s => s.id === stationId);
-            if (!station) return;
-
-            // Pan to station location
-            map.setView([station.latitude, station.longitude], 15);
-
-            // Open the marker popup
-            const markerObj = markers.find(m => m.id === stationId);
-            if (markerObj) {
-                markerObj.marker.openPopup();
-            }
-
-            // Highlight the card
-            highlightStationCard(stationId);
-        }
-
-        // Highlight station card in sidebar
-        function highlightStationCard(stationId) {
-            // Remove active class from all cards
-            document.querySelectorAll('.station-card').forEach(card => {
-                card.classList.remove('active');
-            });
-
-            // Add active class to selected card
-            const selectedCard = document.querySelector(`.station-card[data-id="${stationId}"]`);
-            if (selectedCard) {
-                selectedCard.classList.add('active');
-                selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-        }
-
-        // Show error message
-        function showError(message) {
-            const stationList = document.getElementById('stationList');
-            stationList.innerHTML = `
-                <div class="error-container">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="12"></line>
-                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                    </svg>
-                    <h3>Unable to Load Stations</h3>
-                    <p>${message}</p>
-                    <button class="retry-btn" onclick="fetchStations()">Try Again</button>
+                    <div class="popup-actions">
+                        ${routeButton}
+                        ${bookButton}
+                    </div>
                 </div>
             `;
         }
-
-        // Modal functions
-        function openModal() {
-            document.getElementById('addStationModal').classList.add('active');
-            document.getElementById('addStationForm').reset();
-            document.getElementById('formAlert').innerHTML = '';
+        
+        // Add station markers to map
+        function addStationMarkers(stations) {
+            clearStationMarkers();
+            stationsData = stations;
+            
+            stations.forEach(station => {
+                let icon;
+                if (station.available_slots === 0) {
+                    icon = stationIconFull;
+                } else if (station.is_reachable) {
+                    icon = stationIconReachable;
+                } else {
+                    icon = stationIconUnreachable;
+                }
+                
+                const marker = L.marker([station.latitude, station.longitude], { icon })
+                    .addTo(map)
+                    .bindPopup(createPopupContent(station), { maxWidth: 320 });
+                
+                stationMarkers.push({ marker, station });
+            });
         }
-
-        function closeModal() {
-            document.getElementById('addStationModal').classList.remove('active');
-        }
-
-        function closeModalOnOutsideClick(event) {
-            if (event.target.id === 'addStationModal') {
-                closeModal();
+        
+        // Clear existing route
+        function clearRoute() {
+            if (routingControl) {
+                map.removeControl(routingControl);
+                routingControl = null;
             }
+            if (currentRoute) {
+                map.removeLayer(currentRoute);
+                currentRoute = null;
+            }
+            document.getElementById('directions-container').classList.add('hidden');
         }
-
-        // Handle form submission
-        async function handleSubmit(event) {
-            event.preventDefault();
+        
+        // Show route to station with turn-by-turn directions
+        function showRouteToStation(stationId, lat, lng, name) {
+            if (!userLocation) {
+                alert('⚠️ User location not available. Please click "Find Stations" first.');
+                return;
+            }
             
-            const submitBtn = document.getElementById('submitBtn');
-            const formAlert = document.getElementById('formAlert');
-            const form = event.target;
+            showLoading(true);
+            clearRoute();
             
-            // Disable submit button
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Adding...';
-            formAlert.innerHTML = '';
+            // Create routing control with OSRM
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(userLocation.lat, userLocation.lng),
+                    L.latLng(lat, lng)
+                ],
+                routeWhileDragging: false,
+                addWaypoints: false,
+                draggableWaypoints: false,
+                fitSelectedRoutes: true,
+                showAlternatives: false,
+                lineOptions: {
+                    styles: [{
+                        color: '#3b82f6',
+                        opacity: 0.8,
+                        weight: 6
+                    }],
+                    extendToWaypoints: true,
+                    missingRouteTolerance: 0
+                },
+                createMarker: function() { return null; },
+                router: L.Routing.osrmv1({
+                    serviceUrl: 'https://router.project-osrm.org/route/v1'
+                })
+            }).addTo(map);
             
-            // Get form data
-            const formData = new FormData(form);
-            const stationData = {
-                name: formData.get('name'),
-                latitude: parseFloat(formData.get('latitude')),
-                longitude: parseFloat(formData.get('longitude')),
-                charger_type: formData.get('charger_type'),
-                price: formData.get('price'),
-                status: formData.get('status')
+            // Listen for routing results
+            routingControl.on('routesfound', function(e) {
+                const routes = e.routes;
+                const route = routes[0];
+                
+                // Get route details
+                const distance = (route.summary.totalDistance / 1000).toFixed(2);
+                const duration = Math.round(route.summary.totalTime / 60);
+                const instructions = route.instructions;
+                
+                // Display route summary
+                const summaryHtml = `
+                    <div class="route-info">
+                        <div class="route-destination">
+                            <strong>📍 To: ${name}</strong>
+                        </div>
+                        <div class="route-stats">
+                            <div class="stat">
+                                <span class="stat-icon">🛣️</span>
+                                <span class="stat-value">${distance} km</span>
+                                <span class="stat-label">Distance</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-icon">⏱️</span>
+                                <span class="stat-value">${duration} min</span>
+                                <span class="stat-label">ETA</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Display turn-by-turn directions
+                const directionsHtml = instructions.map((instruction, index) => {
+                    const icon = getDirectionIcon(instruction.type);
+                    const distanceText = instruction.distance > 1000 
+                        ? `${(instruction.distance / 1000).toFixed(1)} km`
+                        : `${Math.round(instruction.distance)} m`;
+                    
+                    return `
+                        <div class="direction-step">
+                            <div class="step-number">${index + 1}</div>
+                            <div class="step-icon">${icon}</div>
+                            <div class="step-content">
+                                <div class="step-instruction">${instruction.text}</div>
+                                <div class="step-distance">${distanceText}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                document.getElementById('route-summary').innerHTML = summaryHtml;
+                document.getElementById('directions-list').innerHTML = directionsHtml;
+                document.getElementById('directions-container').classList.remove('hidden');
+                
+                showLoading(false);
+                showStatus(`✅ Route calculated: ${distance} km, ~${duration} min`, 'success');
+            });
+            
+            routingControl.on('routingerror', function(e) {
+                showLoading(false);
+                showStatus('❌ Unable to calculate route', 'error');
+                console.error('Routing error:', e);
+            });
+        }
+        
+        // Get direction icon based on instruction type
+        function getDirectionIcon(type) {
+            const icons = {
+                'Head': '🧭',
+                'Continue': '⬆️',
+                'Turn right': '➡️',
+                'Turn left': '⬅️',
+                'Slight right': '↗️',
+                'Slight left': '↖️',
+                'Sharp right': '↪️',
+                'Sharp left': '↩️',
+                'Roundabout': '🔄',
+                'Destination': '🏁',
+                'WaypointReached': '📍'
             };
             
+            for (const [key, icon] of Object.entries(icons)) {
+                if (type && type.includes(key.toLowerCase().replace(' ', ''))) {
+                    return icon;
+                }
+            }
+            return '➡️';
+        }
+        
+        // Update station list in sidebar
+        function updateStationList(stations) {
+            const listContainer = document.getElementById('station-list');
+            
+            if (stations.length === 0) {
+                listContainer.innerHTML = '<p class="placeholder-text">No stations found matching your criteria.</p>';
+                return;
+            }
+            
+            listContainer.innerHTML = stations.map(station => {
+                const statusClass = station.is_reachable ? 'reachable' : 'unreachable';
+                const slotsClass = station.available_slots > 0 ? 'available' : 'full';
+                
+                return `
+                    <div class="station-card ${statusClass}" onclick="focusStation(${station.latitude}, ${station.longitude})">
+                        <div class="station-header">
+                            <h4>${station.name}</h4>
+                            <span class="connector-badge">${station.connector_type}</span>
+                        </div>
+                        <div class="station-details">
+                            <span class="detail-item">
+                                <span class="detail-icon">📏</span>
+                                ${station.distance !== null ? station.distance.toFixed(2) + ' km' : 'N/A'}
+                            </span>
+                            <span class="detail-item">
+                                <span class="detail-icon">💰</span>
+                                ₹${station.price_per_unit}/kWh
+                            </span>
+                            <span class="detail-item ${slotsClass}">
+                                <span class="detail-icon">🅿️</span>
+                                ${station.available_slots}/${station.total_slots} slots
+                            </span>
+                        </div>
+                        <button class="btn-route-small" onclick="showRouteToStation(${station.id}, ${station.latitude}, ${station.longitude}, '${station.name.replace(/'/g, "\\'")}')">
+                            🗺️ Get Directions
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Focus on a station on the map
+        function focusStation(lat, lng) {
+            map.setView([lat, lng], 15);
+            
+            stationMarkers.forEach(item => {
+                const markerLatLng = item.marker.getLatLng();
+                if (Math.abs(markerLatLng.lat - lat) < 0.0001 && Math.abs(markerLatLng.lng - lng) < 0.0001) {
+                    item.marker.openPopup();
+                }
+            });
+        }
+        
+        // Open booking modal
+        function openBookingModal(stationId, stationName) {
+            const userName = prompt(`🎫 Book a slot at:\n${stationName}\n\nPlease enter your name:`);
+            
+            if (userName && userName.trim()) {
+                bookSlot(stationId, userName.trim());
+            } else if (userName !== null) {
+                alert('❌ Please enter a valid name to book a slot.');
+            }
+        }
+        
+        // Book a slot via API
+        async function bookSlot(stationId, userName) {
             try {
-                const response = await fetch('/api/stations', {
+                showLoading(true);
+                
+                const response = await fetch('/api/book_slot', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(stationData)
+                    body: JSON.stringify({
+                        station_id: stationId,
+                        user_name: userName
+                    })
                 });
                 
-                const result = await response.json();
+                const data = await response.json();
                 
-                if (result.success) {
-                    // Show success message
-                    formAlert.innerHTML = `
-                        <div class="alert alert-success">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                            Station added successfully!
-                        </div>
-                    `;
-                    
-                    // Reset form
-                    form.reset();
-                    
-                    // Reload stations
-                    await fetchStations();
-                    
-                    // Close modal after short delay
-                    setTimeout(() => {
-                        closeModal();
-                    }, 1500);
+                if (data.success) {
+                    alert(`✅ Booking Successful!\n\nHello ${userName}, your charging slot has been booked!\n\nRemaining slots: ${data.available_slots}`);
+                    findStations();
                 } else {
-                    throw new Error(result.error || 'Failed to add station');
+                    if (data.message === 'Full') {
+                        alert('❌ Booking Failed\n\nSorry, all slots are now full. Please try another station.');
+                    } else {
+                        alert(`❌ Booking Failed\n\n${data.message}`);
+                    }
                 }
             } catch (error) {
-                console.error('Error adding station:', error);
-                formAlert.innerHTML = `
-                    <div class="alert alert-error">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        ${error.message}
-                    </div>
-                `;
+                console.error('Booking error:', error);
+                alert('❌ Error booking slot. Please check your connection and try again.');
             } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Add Station';
+                showLoading(false);
             }
         }
-
-        // Initialize when DOM is loaded
-        document.addEventListener('DOMContentLoaded', initMap);
         
-        // Close modal on Escape key
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') {
-                closeModal();
+        // Fetch stations from API
+        async function fetchStations(lat, lng, batteryPercent, connectorType) {
+            const params = new URLSearchParams({
+                lat: lat,
+                long: lng,
+                battery_percent: batteryPercent,
+                connector_type: connectorType
+            });
+            
+            const response = await fetch(`/api/stations?${params}`);
+            return await response.json();
+        }
+        
+        // Main function to find stations
+        async function findStations() {
+            try {
+                showLoading(true);
+                showStatus('📍 Getting your location...', 'info');
+                
+                try {
+                    userLocation = await getUserLocation();
+                    showStatus('✓ Location found!', 'success');
+                } catch (error) {
+                    console.warn('Geolocation failed, using default location:', error);
+                    userLocation = { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+                    showStatus('⚠️ Using default location (Pune center)', 'warning');
+                }
+                
+                const batteryPercent = parseInt(document.getElementById('battery-percent').value);
+                const connectorType = document.getElementById('connector-type').value;
+                const rangeKm = (MAX_RANGE_KM * batteryPercent) / 100;
+                
+                updateUserMarker(userLocation.lat, userLocation.lng);
+                updateRangeCircle(userLocation.lat, userLocation.lng, rangeKm);
+                map.setView([userLocation.lat, userLocation.lng], 12);
+                
+                showStatus('🔍 Fetching stations...', 'info');
+                
+                const data = await fetchStations(
+                    userLocation.lat, 
+                    userLocation.lng, 
+                    batteryPercent, 
+                    connectorType
+                );
+                
+                if (data.success) {
+                    addStationMarkers(data.stations);
+                    updateStationList(data.stations);
+                    
+                    const reachableCount = data.stations.filter(s => s.is_reachable).length;
+                    showStatus(
+                        `✅ Found ${data.stations.length} stations (${reachableCount} within range)`, 
+                        'success'
+                    );
+                    
+                    if (data.stations.length > 0) {
+                        const allPoints = [
+                            [userLocation.lat, userLocation.lng],
+                            ...data.stations.map(s => [s.latitude, s.longitude])
+                        ];
+                        const bounds = L.latLngBounds(allPoints);
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
+                } else {
+                    showStatus('❌ Error: ' + data.error, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error finding stations:', error);
+                showStatus('❌ Error: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
             }
+        }
+        
+        // Show/hide loading overlay
+        function showLoading(show) {
+            const overlay = document.getElementById('loading-overlay');
+            if (show) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+        
+        // Show status message
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status-message');
+            statusEl.textContent = message;
+            statusEl.className = `status-message status-${type}`;
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusEl.className = 'status-message';
+                }, 5000);
+            }
+        }
+        
+        // Update range display based on battery slider
+        function updateRangeDisplay() {
+            const batteryPercent = parseInt(document.getElementById('battery-percent').value);
+            const rangeKm = (MAX_RANGE_KM * batteryPercent) / 100;
+            
+            document.getElementById('battery-value').textContent = batteryPercent;
+            document.getElementById('range-value').textContent = `${rangeKm.toFixed(0)} km`;
+            
+            if (rangeCircle && userLocation) {
+                updateRangeCircle(userLocation.lat, userLocation.lng, rangeKm);
+            }
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            
+            document.getElementById('battery-percent').addEventListener('input', updateRangeDisplay);
+            document.getElementById('find-stations-btn').addEventListener('click', findStations);
+            document.getElementById('close-directions').addEventListener('click', () => {
+                clearRoute();
+            });
+            
+            updateRangeDisplay();
         });
     </script>
 </body>
